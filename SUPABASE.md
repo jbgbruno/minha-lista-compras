@@ -34,7 +34,9 @@ O catálogo base fica no Supabase e é compartilhado entre usuários autenticado
 somente para leitura direta pelo aplicativo. O botão de remoção usa a função
 `remover_item_catalogo` para excluir um item do catálogo compartilhado, afetando
 todos os usuários. A função também limpa as marcações desse produto nas listas.
-Marcações e itens adicionados pela página continuam sincronizados por usuário.
+Edições do catálogo usam `atualizar_item_catalogo` e também afetam todos os
+usuários, preservando as marcações quando nome ou categoria mudam. Marcações e
+itens adicionados pela página continuam sincronizados por usuário.
 
 ## Limite de segurança
 

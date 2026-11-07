@@ -328,10 +328,9 @@
       }
       #form-novo {
         display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(110px, 1fr) minmax(
-            88px,
-            0.75fr
-          ) auto;
+        grid-template-columns:
+          minmax(0, 1.35fr) minmax(110px, 1fr) minmax(88px, 0.75fr)
+          auto;
         gap: 8px;
         align-items: stretch;
       }
@@ -499,6 +498,57 @@
         font-size: 0.9em;
       }
 
+      #dialog-editar {
+        width: min(440px, calc(100vw - 32px));
+        max-width: 100%;
+        padding: 0;
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--surface);
+        color: var(--ink);
+      }
+      #dialog-editar::backdrop {
+        background: rgb(0 0 0 / 45%);
+      }
+      #form-editar {
+        display: grid;
+        gap: 8px;
+        padding: 20px;
+      }
+      #form-editar h2 {
+        margin: 0 0 4px;
+        font-size: 1.2rem;
+      }
+      #form-editar label {
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+      #form-editar input,
+      #form-editar select {
+        width: 100%;
+        min-width: 0;
+        font: inherit;
+        padding: 10px 12px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--surface);
+        color: var(--ink);
+      }
+      #form-editar input:focus-visible,
+      #form-editar select:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 1px;
+      }
+      #form-editar .acoes {
+        justify-content: flex-end;
+        margin-top: 8px;
+      }
+      #form-editar button[type="submit"] {
+        border-color: var(--accent);
+        background: var(--accent);
+        color: #fff;
+      }
+
       .fim {
         text-align: center;
         padding: 18px;
@@ -601,6 +651,24 @@
         <button type="submit">Adicionar</button>
       </form>
     </div>
+
+    <dialog id="dialog-editar" aria-labelledby="titulo-editar">
+      <form id="form-editar" method="dialog">
+        <h2 id="titulo-editar">Editar item</h2>
+        <label for="editar-nome">Nome</label>
+        <input id="editar-nome" type="text" maxlength="80" required />
+        <label for="editar-categoria">Categoria</label>
+        <select id="editar-categoria" required></select>
+        <label for="editar-quantidade">Quantidade</label>
+        <input id="editar-quantidade" type="text" maxlength="100" />
+        <label for="editar-observacao">Observação</label>
+        <input id="editar-observacao" type="text" maxlength="160" />
+        <div class="acoes">
+          <button type="button" id="cancelar-edicao">Cancelar</button>
+          <button type="submit">Salvar</button>
+        </div>
+      </form>
+    </dialog>
 
     <main id="app"><p class="detalhe">Carregando lista…</p></main>
 
@@ -915,6 +983,7 @@
           nome,
           quantidade,
           observacao,
+          aoEditar,
           aoRemover,
           extra = false,
         ) {
@@ -943,6 +1012,18 @@
             el("label", { class: "item" }, cb, texto),
           );
           if (extra) li.dataset.extra = "true";
+          if (aoEditar) {
+            const btn = el("button", {
+              type: "button",
+              class: "remover editar",
+              "aria-label": `Editar ${nome}`,
+              title: `Editar ${nome}`,
+              text: "✎",
+            });
+            btn.addEventListener("click", aoEditar);
+            li.classList.add("com-remover");
+            li.append(btn);
+          }
           if (aoRemover) {
             const btn = el("button", {
               type: "button",
@@ -1018,6 +1099,15 @@
                   obj.nome,
                   quantidadeUtil(obj.quantidade) ? obj.quantidade : "",
                   obj.observacao || "",
+                  () =>
+                    abrirEditor({
+                      tipo: "catalogo",
+                      id,
+                      categoria: cat.categoria,
+                      nome: obj.nome,
+                      quantidade: obj.quantidade || "",
+                      observacao: obj.observacao || "",
+                    }),
                   () => removerItemCatalogo(cat.categoria, obj.nome, id),
                 ),
               );
@@ -1055,7 +1145,16 @@
                     item.id,
                     item.nome,
                     quantidadeUtil(item.quantidade) ? item.quantidade : "",
-                    "",
+                    item.observacao || "",
+                    () =>
+                      abrirEditor({
+                        tipo: "extra",
+                        id: item.id,
+                        categoria: item.categoria,
+                        nome: item.nome,
+                        quantidade: item.quantidade || "",
+                        observacao: item.observacao || "",
+                      }),
                     () => removerExtra(item.id),
                     true,
                   ),
@@ -1197,6 +1296,118 @@
         const campoQuantidadeNovo = document.getElementById("novo-quantidade");
         const campoCategoriaNovo = document.getElementById("novo-categoria");
         const campoUnidadeNovo = document.getElementById("novo-unidade");
+        const dialogEditar = document.getElementById("dialog-editar");
+        const formEditar = document.getElementById("form-editar");
+        const campoEditarNome = document.getElementById("editar-nome");
+        const campoEditarCategoria =
+          document.getElementById("editar-categoria");
+        const campoEditarQuantidade =
+          document.getElementById("editar-quantidade");
+        const campoEditarObservacao =
+          document.getElementById("editar-observacao");
+        let itemEmEdicao = null;
+
+        function abrirEditor(item) {
+          itemEmEdicao = item;
+          campoEditarCategoria.replaceChildren(
+            ...categorias.map((categoria) =>
+              el("option", {
+                value: categoria,
+                text: categoria === "Outros alimentos" ? "Outros" : categoria,
+              }),
+            ),
+          );
+          campoEditarNome.value = item.nome;
+          campoEditarCategoria.value = item.categoria;
+          campoEditarQuantidade.value = item.quantidade;
+          campoEditarObservacao.value = item.observacao;
+          dialogEditar.showModal();
+          campoEditarNome.focus();
+        }
+
+        document
+          .getElementById("cancelar-edicao")
+          .addEventListener("click", () => dialogEditar.close());
+
+        formEditar.addEventListener("submit", async (evento) => {
+          evento.preventDefault();
+          if (!itemEmEdicao) return;
+
+          const atual = itemEmEdicao;
+          const nome = campoEditarNome.value.trim().replace(/\s+/g, " ");
+          const categoria = campoEditarCategoria.value;
+          const quantidade = campoEditarQuantidade.value.trim();
+          const observacao = campoEditarObservacao.value.trim();
+          if (!nome || !categorias.includes(categoria)) return;
+
+          if (atual.tipo === "extra") {
+            const duplicado = extras.some(
+              (item) =>
+                item.id !== atual.id &&
+                item.categoria === categoria &&
+                item.nome.toLowerCase() === nome.toLowerCase(),
+            );
+            if (duplicado) {
+              definirStatus("Já existe um item com esse nome na categoria.");
+              return;
+            }
+            extras = extras.map((item) =>
+              item.id === atual.id
+                ? { ...item, nome, categoria, quantidade, observacao }
+                : item,
+            );
+            salvarExtras();
+            montarExtras();
+            const secao = secoes.find((item) => item.titulo === categoria);
+            if (secao) secao.detalhes.open = true;
+            atualizar();
+            itemEmEdicao = null;
+            dialogEditar.close();
+            return;
+          }
+
+          definirStatus("Sincronizando…");
+          const { data, error } = await supabaseClient.rpc(
+            "atualizar_item_catalogo",
+            {
+              p_categoria_atual: atual.categoria,
+              p_nome_atual: atual.nome,
+              p_categoria_nova: categoria,
+              p_nome_novo: nome,
+              p_quantidade_nova: quantidade || null,
+              p_observacao_nova: observacao || null,
+            },
+          );
+          if (error || !data) {
+            definirStatus(
+              error
+                ? "Falha ao editar o item compartilhado."
+                : "O item não foi alterado. Verifique se o nome já existe.",
+            );
+            if (error) console.error("Falha ao editar item:", error);
+            return;
+          }
+
+          const idNovo = idDoItem(categoria, nome);
+          const estavaMarcado = marcados.delete(atual.id);
+          if (estavaMarcado) marcados.add(idNovo);
+          guardar.gravar(CHAVE_MARCADOS, [...marcados]);
+
+          const { data: catalogo, error: erroCatalogo } = await supabaseClient
+            .from("lista_compras_catalogo")
+            .select("produtos")
+            .eq("id", true)
+            .single();
+          itemEmEdicao = null;
+          dialogEditar.close();
+          if (erroCatalogo || !Array.isArray(catalogo?.produtos)) {
+            definirStatus("Item salvo. Atualize a página para ver os dados.");
+            return;
+          }
+          montar(catalogo.produtos);
+          definirStatus("Sincronizado");
+        });
+
         formNovo.addEventListener("submit", (e) => {
           e.preventDefault();
           adicionarExtra(

@@ -130,6 +130,174 @@ $$;
 revoke all on function public.remover_item_catalogo(text, text) from public, anon;
 grant execute on function public.remover_item_catalogo(text, text) to authenticated;
 
+create or replace function public.atualizar_item_catalogo(
+  p_categoria_atual text,
+  p_nome_atual text,
+  p_categoria_nova text,
+  p_nome_novo text,
+  p_quantidade_nova text,
+  p_observacao_nova text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path = pg_catalog, public
+as $$
+declare
+  item_atual jsonb;
+  item_editado jsonb;
+  id_antigo text;
+  id_novo text;
+begin
+  if p_categoria_atual is null or btrim(p_categoria_atual) = ''
+     or p_nome_atual is null or btrim(p_nome_atual) = ''
+     or p_categoria_nova is null or btrim(p_categoria_nova) = ''
+     or p_nome_novo is null or btrim(p_nome_novo) = '' then
+    raise exception 'Categoria e nome do item são obrigatórios.'
+      using errcode = '22023';
+  end if;
+
+  select itens.item
+  into item_atual
+  from public.lista_compras_catalogo as catalogo
+  cross join lateral jsonb_array_elements(catalogo.produtos)
+    as categorias(categoria)
+  cross join lateral jsonb_array_elements(categorias.categoria->'itens')
+    as itens(item)
+  where catalogo.id = true
+    and categorias.categoria->>'categoria' = p_categoria_atual
+    and itens.item->>'nome' = p_nome_atual
+  limit 1;
+
+  if item_atual is null or not exists (
+    select 1
+    from public.lista_compras_catalogo as catalogo
+    cross join lateral jsonb_array_elements(catalogo.produtos)
+      as categorias(categoria)
+    where catalogo.id = true
+      and categorias.categoria->>'categoria' = p_categoria_nova
+  ) then
+    return false;
+  end if;
+
+  if exists (
+    select 1
+    from public.lista_compras_catalogo as catalogo
+    cross join lateral jsonb_array_elements(catalogo.produtos)
+      as categorias(categoria)
+    cross join lateral jsonb_array_elements(categorias.categoria->'itens')
+      as itens(item)
+    where catalogo.id = true
+      and categorias.categoria->>'categoria' = p_categoria_nova
+      and itens.item->>'nome' = btrim(p_nome_novo)
+      and not (
+        categorias.categoria->>'categoria' = p_categoria_atual
+        and itens.item->>'nome' = p_nome_atual
+      )
+  ) then
+    return false;
+  end if;
+
+  if jsonb_typeof(item_atual) = 'string' then
+    item_atual := jsonb_build_object('nome', item_atual #>> '{}');
+  end if;
+  item_editado := jsonb_set(
+    item_atual,
+    '{nome}',
+    to_jsonb(btrim(p_nome_novo)),
+    true
+  );
+
+  if p_quantidade_nova is null or btrim(p_quantidade_nova) = '' then
+    item_editado := item_editado - 'quantidade';
+  else
+    item_editado := jsonb_set(
+      item_editado,
+      '{quantidade}',
+      to_jsonb(btrim(p_quantidade_nova)),
+      true
+    );
+  end if;
+
+  if p_observacao_nova is null or btrim(p_observacao_nova) = '' then
+    item_editado := item_editado - 'observacao';
+  else
+    item_editado := jsonb_set(
+      item_editado,
+      '{observacao}',
+      to_jsonb(btrim(p_observacao_nova)),
+      true
+    );
+  end if;
+
+  update public.lista_compras_catalogo as catalogo
+  set produtos = (
+    select jsonb_agg(
+      case
+        when categoria->>'categoria' = p_categoria_atual then
+          jsonb_set(
+            categoria,
+            '{itens}',
+            case
+              when p_categoria_atual = p_categoria_nova then (
+                select jsonb_agg(
+                  case
+                    when item->>'nome' = p_nome_atual then item_editado
+                    else item
+                  end
+                  order by item_ordem
+                )
+                from jsonb_array_elements(categoria->'itens')
+                  with ordinality as itens(item, item_ordem)
+              )
+              else coalesce(
+                (
+                  select jsonb_agg(item order by item_ordem)
+                  from jsonb_array_elements(categoria->'itens')
+                    with ordinality as itens(item, item_ordem)
+                  where item->>'nome' <> p_nome_atual
+                ),
+                '[]'::jsonb
+              )
+            end
+          )
+        when categoria->>'categoria' = p_categoria_nova then
+          jsonb_set(
+            categoria,
+            '{itens}',
+            coalesce(categoria->'itens', '[]'::jsonb) ||
+              jsonb_build_array(item_editado)
+          )
+        else categoria
+      end
+      order by categoria_ordem
+    )
+    from jsonb_array_elements(catalogo.produtos)
+      with ordinality as categorias(categoria, categoria_ordem)
+  ),
+  updated_at = now()
+  where catalogo.id = true;
+
+  id_antigo := p_categoria_atual || '|' || p_nome_atual;
+  id_novo := p_categoria_nova || '|' || btrim(p_nome_novo);
+  if id_antigo <> id_novo then
+    update public.lista_compras_estado
+    set marcados = array_replace(marcados, id_antigo, id_novo),
+        updated_at = now()
+    where id_antigo = any(marcados);
+  end if;
+
+  return true;
+end;
+$$;
+
+revoke all on function public.atualizar_item_catalogo(
+  text, text, text, text, text, text
+) from public, anon;
+grant execute on function public.atualizar_item_catalogo(
+  text, text, text, text, text, text
+) to authenticated;
+
 alter table public.lista_compras_estado enable row level security;
 
 grant select, insert, update
