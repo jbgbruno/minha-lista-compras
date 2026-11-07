@@ -37,6 +37,13 @@ todos os usuários. A função também limpa as marcações desse produto nas li
 Edições do catálogo usam `atualizar_item_catalogo` e também afetam todos os
 usuários, preservando as marcações quando nome ou categoria mudam. Marcações e
 itens adicionados pela página continuam sincronizados por usuário.
+O campo opcional `preco_aproximado` é editado no formulário de edição, aparece
+em cada item e é tratado como preço unitário: o total aproximado soma preço ×
+quantidade, considerando uma unidade quando a quantidade estiver vazia. Os
+campos `quantidade` (numérico) e `unidade` (texto) são armazenados
+separadamente. Ao reaplicar o SQL, valores antigos como `2 pacotes` são
+migrados para esses campos. A edição oferece as mesmas opções de unidade da
+inclusão; o preço não é solicitado ao adicionar um item novo.
 
 ## Limite de segurança
 

@@ -108,6 +108,17 @@
         color: var(--ink);
         font-size: 1.15rem;
       }
+      .resumo-topo {
+        display: grid;
+        justify-items: end;
+        gap: 2px;
+      }
+      .total-aproximado {
+        color: var(--muted);
+        font-size: 0.82rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
 
       .barra {
         height: 8px;
@@ -299,6 +310,12 @@
       .detalhe {
         font-size: 0.88rem;
         color: var(--muted);
+      }
+      .preco-aproximado {
+        font-size: 0.88rem;
+        color: var(--accent);
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
       }
       .obs {
         display: inline-block;
@@ -568,7 +585,16 @@
       <div class="wrap">
         <div class="topo">
           <h1>Lista de compras</h1>
-          <div class="contagem" id="contagem" aria-live="polite"></div>
+          <div class="resumo-topo">
+            <div class="contagem" id="contagem" aria-live="polite"></div>
+            <div
+              class="total-aproximado"
+              id="total-aproximado"
+              aria-live="polite"
+            >
+              Total aproximado: R$ 0,00
+            </div>
+          </div>
         </div>
         <div
           class="barra"
@@ -660,7 +686,24 @@
         <label for="editar-categoria">Categoria</label>
         <select id="editar-categoria" required></select>
         <label for="editar-quantidade">Quantidade</label>
-        <input id="editar-quantidade" type="text" maxlength="100" />
+        <input
+          id="editar-quantidade"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="any"
+        />
+        <label for="editar-unidade">Unidade</label>
+        <select id="editar-unidade"></select>
+        <label for="editar-preco">Preço Aproximado (R$)</label>
+        <input
+          id="editar-preco"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          placeholder="0,00"
+        />
         <label for="editar-observacao">Observação</label>
         <input id="editar-observacao" type="text" maxlength="160" />
         <div class="acoes">
@@ -697,6 +740,7 @@
         const barraPreench = document.getElementById("barra-preench");
         const btnOcultar = document.getElementById("btn-ocultar");
         const btnLimpar = document.getElementById("btn-limpar");
+        const totalAproximado = document.getElementById("total-aproximado");
         const painelConta = document.getElementById("painel-conta");
         const formAuth = document.getElementById("form-auth");
         const campoEmail = document.getElementById("auth-email");
@@ -804,16 +848,19 @@
                       typeof item.id === "string" &&
                       typeof item.nome === "string",
                   )
-                  .map((item) => ({
-                    ...item,
-                    categoria: categorias.includes(item.categoria)
-                      ? item.categoria
-                      : categoriaPadrao(),
-                    quantidade:
-                      typeof item.quantidade === "string"
-                        ? item.quantidade
-                        : "",
-                  }))
+                  .map((item) => {
+                    const quantidade = separarQuantidade(
+                      item.quantidade,
+                      item.unidade,
+                    );
+                    return {
+                      ...item,
+                      categoria: categorias.includes(item.categoria)
+                        ? item.categoria
+                        : categoriaPadrao(),
+                      ...quantidade,
+                    };
+                  })
               : [];
           }
           montar(catalogo.produtos);
@@ -919,28 +966,61 @@
           filhos.forEach((f) => n.append(f));
           return n;
         };
-        const quantidadeUtil = (q) => q && !/^n[aã]o informad/i.test(q.trim());
+        function separarQuantidade(quantidade, unidade) {
+          const unidadeSalva =
+            typeof unidade === "string" ? unidade.trim() : "";
+          if (typeof quantidade === "number" && Number.isFinite(quantidade)) {
+            return { quantidade, unidade: unidadeSalva };
+          }
+
+          const texto = typeof quantidade === "string" ? quantidade.trim() : "";
+          if (!texto || /^n[aã]o informad/i.test(texto)) {
+            return { quantidade: null, unidade: unidadeSalva };
+          }
+
+          const partes = texto.match(/^([0-9]+(?:[.,][0-9]+)?)(?:\s+(.+))?$/);
+          if (partes) {
+            return {
+              quantidade: Number(partes[1].replace(",", ".")),
+              unidade: unidadeSalva || partes[2]?.trim() || "",
+            };
+          }
+
+          return { quantidade: null, unidade: unidadeSalva || texto };
+        }
+
+        function formatarQuantidade(quantidade, unidade) {
+          const valor = separarQuantidade(quantidade, unidade);
+          if (valor.quantidade === null) return valor.unidade;
+
+          const quantidadeTexto = new Intl.NumberFormat("pt-BR", {
+            maximumFractionDigits: 6,
+          }).format(valor.quantidade);
+          const unidadeTexto =
+            valor.quantidade === 1
+              ? valor.unidade
+              : UNIDADES_PLURAIS[valor.unidade] || valor.unidade;
+          return [quantidadeTexto, unidadeTexto].filter(Boolean).join(" ");
+        }
+
+        const normalizarPreco = (valor) => {
+          if (valor === null || valor === undefined || valor === "")
+            return null;
+          const preco = Number(valor);
+          return Number.isFinite(preco) && preco >= 0
+            ? Math.round(preco * 100) / 100
+            : null;
+        };
+        const formatarPreco = (valor) =>
+          new Intl.NumberFormat("pt-BR", {
+            style: "currency",
+            currency: "BRL",
+          }).format(valor);
 
         // ---- renderização ----
         const CHAVE_EXTRAS = "lista-compras:extras";
         const CATEGORIA_PADRAO = "Outros";
         const UNIDADE_PADRAO = "Un";
-        const UNIDADES = new Set([
-          UNIDADE_PADRAO,
-          "kg",
-          "g",
-          "mg",
-          "L",
-          "mL",
-          "pacote",
-          "caixa",
-          "bandeja",
-          "frasco",
-          "lata",
-          "pote",
-          "sachê",
-          "rolo",
-        ]);
         const UNIDADES_PLURAIS = {
           pacote: "pacotes",
           caixa: "caixas",
@@ -977,6 +1057,7 @@
 
         let secoes = []; // { elemento, ids, qtd, lista }
         let total = 0;
+        const precos = new Map();
 
         function criarItem(
           id,
@@ -986,6 +1067,7 @@
           aoEditar,
           aoRemover,
           extra = false,
+          precoAproximado = null,
         ) {
           const cb = el("input", { type: "checkbox" });
           cb.checked = marcados.has(id);
@@ -1003,6 +1085,14 @@
           );
           if (quantidade)
             texto.append(el("span", { class: "detalhe", text: quantidade }));
+          const preco = normalizarPreco(precoAproximado);
+          if (preco !== null)
+            texto.append(
+              el("span", {
+                class: "preco-aproximado",
+                text: `Preço aprox.: ${formatarPreco(preco)}`,
+              }),
+            );
           if (observacao)
             texto.append(el("span", { class: "obs", text: observacao }));
 
@@ -1060,6 +1150,7 @@
         function montar(dados) {
           app.replaceChildren();
           secoes = [];
+          precos.clear();
           categorias = dados
             .map((cat) => cat.categoria)
             .filter(
@@ -1076,14 +1167,17 @@
             ),
           );
           campoCategoriaNovo.value = categoriaPadrao();
-          extras = extras.map((item) => ({
-            ...item,
-            categoria: categorias.includes(item.categoria)
-              ? item.categoria
-              : categoriaPadrao(),
-            quantidade:
-              typeof item.quantidade === "string" ? item.quantidade : "",
-          }));
+          extras = extras.map((item) => {
+            const quantidade = separarQuantidade(item.quantidade, item.unidade);
+            return {
+              ...item,
+              categoria: categorias.includes(item.categoria)
+                ? item.categoria
+                : categoriaPadrao(),
+              ...quantidade,
+              preco_aproximado: normalizarPreco(item.preco_aproximado),
+            };
+          });
 
           dados.forEach((cat) => {
             const ids = [];
@@ -1093,11 +1187,15 @@
               if (!obj || !obj.nome) return;
               const id = idDoItem(cat.categoria, obj.nome);
               ids.push(id);
+              const quantidade = separarQuantidade(obj.quantidade, obj.unidade);
+              const preco = normalizarPreco(obj.preco_aproximado);
+              if (preco !== null)
+                precos.set(id, { preco, quantidade: quantidade.quantidade });
               lista.append(
                 criarItem(
                   id,
                   obj.nome,
-                  quantidadeUtil(obj.quantidade) ? obj.quantidade : "",
+                  formatarQuantidade(quantidade.quantidade, quantidade.unidade),
                   obj.observacao || "",
                   () =>
                     abrirEditor({
@@ -1105,10 +1203,14 @@
                       id,
                       categoria: cat.categoria,
                       nome: obj.nome,
-                      quantidade: obj.quantidade || "",
+                      quantidade: quantidade.quantidade,
+                      unidade: quantidade.unidade,
+                      precoAproximado: preco,
                       observacao: obj.observacao || "",
                     }),
                   () => removerItemCatalogo(cat.categoria, obj.nome, id),
+                  false,
+                  preco,
                 ),
               );
             });
@@ -1133,18 +1235,34 @@
           secoes.forEach((secao) => {
             secao.lista
               .querySelectorAll('li[data-extra="true"]')
-              .forEach((item) => item.remove());
+              .forEach((item) => {
+                precos.delete(item.dataset.id);
+                item.remove();
+              });
             secao.ids = [...secao.idsBase];
 
             extras
               .filter((item) => item.categoria === secao.titulo)
               .forEach((item) => {
                 secao.ids.push(item.id);
+                const quantidade = separarQuantidade(
+                  item.quantidade,
+                  item.unidade,
+                );
+                const preco = normalizarPreco(item.preco_aproximado);
+                if (preco !== null)
+                  precos.set(item.id, {
+                    preco,
+                    quantidade: quantidade.quantidade,
+                  });
                 secao.lista.append(
                   criarItem(
                     item.id,
                     item.nome,
-                    quantidadeUtil(item.quantidade) ? item.quantidade : "",
+                    formatarQuantidade(
+                      quantidade.quantidade,
+                      quantidade.unidade,
+                    ),
                     item.observacao || "",
                     () =>
                       abrirEditor({
@@ -1152,11 +1270,14 @@
                         id: item.id,
                         categoria: item.categoria,
                         nome: item.nome,
-                        quantidade: item.quantidade || "",
+                        quantidade: quantidade.quantidade,
+                        unidade: quantidade.unidade,
+                        precoAproximado: preco,
                         observacao: item.observacao || "",
                       }),
                     () => removerExtra(item.id),
                     true,
+                    preco,
                   ),
                 );
               });
@@ -1166,20 +1287,19 @@
         function adicionarExtra(nome, categoria, quantidade, unidade) {
           const limpo = nome.trim().replace(/\s+/g, " ");
           if (!limpo) return;
-          const quantidadeNumerica = quantidade.trim();
-          const numero = Number(quantidadeNumerica);
-          const unidadeEscolhida = UNIDADES.has(unidade)
-            ? unidade
-            : UNIDADE_PADRAO;
-          const unidadeFinal =
-            numero === 1
-              ? unidadeEscolhida
-              : UNIDADES_PLURAIS[unidadeEscolhida] || unidadeEscolhida;
-          const quantidadeLimpa = quantidadeNumerica
-            ? `${new Intl.NumberFormat("pt-BR", {
-                maximumFractionDigits: 6,
-              }).format(numero)} ${unidadeFinal}`
-            : "";
+          const quantidadeTexto = quantidade.trim();
+          const quantidadeNumerica =
+            quantidadeTexto === "" ? null : Number(quantidadeTexto);
+          if (
+            quantidadeNumerica !== null &&
+            (!Number.isFinite(quantidadeNumerica) || quantidadeNumerica < 0)
+          ) {
+            definirStatus(
+              "Informe uma quantidade válida maior ou igual a zero.",
+            );
+            return;
+          }
+          const unidadeEscolhida = unidade.trim() || UNIDADE_PADRAO;
           const categoriaEscolhida = categorias.includes(categoria)
             ? categoria
             : categoriaPadrao();
@@ -1197,7 +1317,8 @@
               id,
               nome: limpo,
               categoria: categoriaEscolhida,
-              quantidade: quantidadeLimpa,
+              quantidade: quantidadeNumerica,
+              unidade: quantidadeNumerica === null ? null : unidadeEscolhida,
             });
             salvarExtras();
             montarExtras();
@@ -1264,6 +1385,20 @@
         function atualizar() {
           let pegos = 0;
           total = secoes.reduce((n, s) => n + s.ids.length, 0);
+          const somaPrecos = secoes.reduce(
+            (soma, secao) =>
+              soma +
+              secao.ids.reduce((subtotal, id) => {
+                const item = precos.get(id);
+                if (!item) return subtotal;
+                return (
+                  subtotal +
+                  item.preco * (item.quantidade === null ? 1 : item.quantidade)
+                );
+              }, 0),
+            0,
+          );
+          totalAproximado.textContent = `Total aproximado: ${formatarPreco(somaPrecos)}`;
           secoes.forEach((s) => {
             const feitos = s.ids.filter((id) => marcados.has(id)).length;
             pegos += feitos;
@@ -1303,6 +1438,8 @@
           document.getElementById("editar-categoria");
         const campoEditarQuantidade =
           document.getElementById("editar-quantidade");
+        const campoEditarUnidade = document.getElementById("editar-unidade");
+        const campoEditarPreco = document.getElementById("editar-preco");
         const campoEditarObservacao =
           document.getElementById("editar-observacao");
         let itemEmEdicao = null;
@@ -1317,9 +1454,26 @@
               }),
             ),
           );
+          campoEditarUnidade.replaceChildren(
+            ...[...campoUnidadeNovo.options].map((option) =>
+              el("option", { value: option.value, text: option.textContent }),
+            ),
+          );
+          if (
+            item.unidade &&
+            ![...campoEditarUnidade.options].some(
+              (option) => option.value === item.unidade,
+            )
+          ) {
+            campoEditarUnidade.append(
+              el("option", { value: item.unidade, text: item.unidade }),
+            );
+          }
           campoEditarNome.value = item.nome;
           campoEditarCategoria.value = item.categoria;
-          campoEditarQuantidade.value = item.quantidade;
+          campoEditarQuantidade.value = item.quantidade ?? "";
+          campoEditarUnidade.value = item.unidade || UNIDADE_PADRAO;
+          campoEditarPreco.value = item.precoAproximado ?? "";
           campoEditarObservacao.value = item.observacao;
           dialogEditar.showModal();
           campoEditarNome.focus();
@@ -1336,9 +1490,29 @@
           const atual = itemEmEdicao;
           const nome = campoEditarNome.value.trim().replace(/\s+/g, " ");
           const categoria = campoEditarCategoria.value;
-          const quantidade = campoEditarQuantidade.value.trim();
+          const quantidadeTexto = campoEditarQuantidade.value.trim();
+          const quantidade =
+            quantidadeTexto === "" ? null : Number(quantidadeTexto);
+          const unidadeTexto = campoEditarUnidade.value.trim();
+          const unidade =
+            quantidade === null ? null : unidadeTexto || UNIDADE_PADRAO;
+          const precoDigitado = campoEditarPreco.value.trim();
+          const precoAproximado = normalizarPreco(precoDigitado);
           const observacao = campoEditarObservacao.value.trim();
           if (!nome || !categorias.includes(categoria)) return;
+          if (precoDigitado && precoAproximado === null) {
+            definirStatus("Informe um preço válido maior ou igual a zero.");
+            return;
+          }
+          if (
+            quantidade !== null &&
+            (!Number.isFinite(quantidade) || quantidade < 0)
+          ) {
+            definirStatus(
+              "Informe uma quantidade válida maior ou igual a zero.",
+            );
+            return;
+          }
 
           if (atual.tipo === "extra") {
             const duplicado = extras.some(
@@ -1353,7 +1527,15 @@
             }
             extras = extras.map((item) =>
               item.id === atual.id
-                ? { ...item, nome, categoria, quantidade, observacao }
+                ? {
+                    ...item,
+                    nome,
+                    categoria,
+                    quantidade,
+                    unidade,
+                    preco_aproximado: precoAproximado,
+                    observacao,
+                  }
                 : item,
             );
             salvarExtras();
@@ -1374,7 +1556,9 @@
               p_nome_atual: atual.nome,
               p_categoria_nova: categoria,
               p_nome_novo: nome,
-              p_quantidade_nova: quantidade || null,
+              p_quantidade_nova: quantidade,
+              p_unidade_nova: unidade,
+              p_preco_novo: precoAproximado,
               p_observacao_nova: observacao || null,
             },
           );

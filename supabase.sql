@@ -70,6 +70,83 @@ create table if not exists public.lista_compras_estado (
   updated_at timestamptz not null default now()
 );
 
+create or replace function public.normalizar_quantidades_itens(p_itens jsonb)
+returns jsonb
+language sql
+immutable
+set search_path = pg_catalog, public
+as $$
+  select coalesce(
+    jsonb_agg(
+      case
+        when not (item ? 'quantidade')
+          or jsonb_typeof(item->'quantidade') <> 'string'
+          or coalesce(btrim(item->>'unidade'), '') <> '' then item
+        when btrim(item->>'quantidade') = '' then item - 'quantidade'
+        when lower(btrim(item->>'quantidade')) like 'não informada%' then
+          item - 'quantidade'
+        when partes.valores is not null then
+          (item - 'quantidade') || jsonb_build_object(
+            'quantidade', replace(partes.valores[1], ',', '.')::numeric
+          ) || case
+            when btrim(partes.valores[3]) = '' then '{}'::jsonb
+            else jsonb_build_object('unidade', btrim(partes.valores[3]))
+          end
+        else
+          (item - 'quantidade') || jsonb_build_object(
+            'unidade', btrim(item->>'quantidade')
+          )
+      end
+      order by item_ordem
+    ),
+    '[]'::jsonb
+  )
+  from jsonb_array_elements(coalesce(p_itens, '[]'::jsonb))
+    with ordinality as itens(item, item_ordem)
+  cross join lateral (
+    select regexp_match(
+      item->>'quantidade',
+      '^[[:space:]]*([0-9]+([.,][0-9]+)?)[[:space:]]*(.*)$'
+    ) as valores
+  ) as partes;
+$$;
+
+revoke all on function public.normalizar_quantidades_itens(jsonb)
+  from public, anon, authenticated;
+
+update public.lista_compras_catalogo as catalogo
+set produtos = (
+  select jsonb_agg(
+    jsonb_set(
+      categoria,
+      '{itens}',
+      public.normalizar_quantidades_itens(categoria->'itens')
+    )
+    order by categoria_ordem
+  )
+  from jsonb_array_elements(catalogo.produtos)
+    with ordinality as categorias(categoria, categoria_ordem)
+),
+updated_at = now()
+where catalogo.id = true
+  and exists (
+    select 1
+    from jsonb_array_elements(catalogo.produtos) as categorias(categoria)
+    cross join lateral jsonb_array_elements(categorias.categoria->'itens')
+      as itens(item)
+    where jsonb_typeof(itens.item->'quantidade') = 'string'
+      and coalesce(btrim(itens.item->>'unidade'), '') = ''
+  );
+
+update public.lista_compras_estado as estado
+set extras = public.normalizar_quantidades_itens(estado.extras)
+where exists (
+  select 1
+  from jsonb_array_elements(estado.extras) as extras(extra)
+  where jsonb_typeof(extras.extra->'quantidade') = 'string'
+    and coalesce(btrim(extras.extra->>'unidade'), '') = ''
+);
+
 create or replace function public.remover_item_catalogo(
   p_categoria text,
   p_nome text
@@ -142,12 +219,21 @@ $$;
 revoke all on function public.remover_item_catalogo(text, text) from public, anon;
 grant execute on function public.remover_item_catalogo(text, text) to authenticated;
 
+drop function if exists public.atualizar_item_catalogo(
+  text, text, text, text, text, text
+);
+drop function if exists public.atualizar_item_catalogo(
+  text, text, text, text, text, numeric, text
+);
+
 create or replace function public.atualizar_item_catalogo(
   p_categoria_atual text,
   p_nome_atual text,
   p_categoria_nova text,
   p_nome_novo text,
-  p_quantidade_nova text,
+  p_quantidade_nova numeric,
+  p_unidade_nova text,
+  p_preco_novo numeric,
   p_observacao_nova text
 )
 returns boolean
@@ -164,7 +250,9 @@ begin
   if p_categoria_atual is null or btrim(p_categoria_atual) = ''
      or p_nome_atual is null or btrim(p_nome_atual) = ''
      or p_categoria_nova is null or btrim(p_categoria_nova) = ''
-     or p_nome_novo is null or btrim(p_nome_novo) = '' then
+    or p_nome_novo is null or btrim(p_nome_novo) = ''
+    or p_quantidade_nova < 0
+    or p_preco_novo < 0 then
     raise exception 'Categoria e nome do item são obrigatórios.'
       using errcode = '22023';
   end if;
@@ -220,13 +308,35 @@ begin
     true
   );
 
-  if p_quantidade_nova is null or btrim(p_quantidade_nova) = '' then
+  if p_quantidade_nova is null then
     item_editado := item_editado - 'quantidade';
   else
     item_editado := jsonb_set(
       item_editado,
       '{quantidade}',
-      to_jsonb(btrim(p_quantidade_nova)),
+      to_jsonb(p_quantidade_nova),
+      true
+    );
+  end if;
+
+  if p_unidade_nova is null or btrim(p_unidade_nova) = '' then
+    item_editado := item_editado - 'unidade';
+  else
+    item_editado := jsonb_set(
+      item_editado,
+      '{unidade}',
+      to_jsonb(btrim(p_unidade_nova)),
+      true
+    );
+  end if;
+
+  if p_preco_novo is null then
+    item_editado := item_editado - 'preco_aproximado';
+  else
+    item_editado := jsonb_set(
+      item_editado,
+      '{preco_aproximado}',
+      to_jsonb(p_preco_novo),
       true
     );
   end if;
@@ -304,10 +414,10 @@ end;
 $$;
 
 revoke all on function public.atualizar_item_catalogo(
-  text, text, text, text, text, text
+  text, text, text, text, numeric, text, numeric, text
 ) from public, anon;
 grant execute on function public.atualizar_item_catalogo(
-  text, text, text, text, text, text
+  text, text, text, text, numeric, text, numeric, text
 ) to authenticated;
 
 alter table public.lista_compras_estado enable row level security;
