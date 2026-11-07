@@ -57,6 +57,10 @@
       {
         "nome": "Ketchup",
         "quantidade": "1 frasco grande"
+      },
+      {
+        "nome": "Café",
+        "quantidade": "5 pacotes"
       }
     ]
   },
@@ -238,6 +242,18 @@
       },
       {
         "nome": "Inseticida",
+        "quantidade": "Não informada"
+      },
+      {
+        "nome": "Saco de lixo",
+        "quantidade": "Não informada"
+      },
+      {
+        "nome": "Pasta de dente",
+        "quantidade": "Não informada"
+      },
+      {
+        "nome": "Desodorante",
         "quantidade": "Não informada"
       }
     ]
