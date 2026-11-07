@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Minha lista de compras</title>
+<meta name="theme-color" content="#1f6b4a">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🛒</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f2f5f0;
+    --surface: #ffffff;
+    --ink: #1c2a22;
+    --muted: #66756b;
+    --line: #dde5dc;
+    --accent: #1f6b4a;
+    --accent-soft: #dcefe3;
+    --done: #98a69c;
+    --note: #8a5a00;
+    --note-bg: #fbefd2;
+    color-scheme: light;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121a15;
+      --surface: #1a251e;
+      --ink: #e8efe9;
+      --muted: #9aaba0;
+      --line: #2a382f;
+      --accent: #5fc58f;
+      --accent-soft: #23372b;
+      --done: #66756b;
+      --note: #f0c77a;
+      --note-bg: #3a2f17;
+      color-scheme: dark;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-padding-top: 130px; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Figtree", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: 17px;
+    line-height: 1.4;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    padding: calc(14px + env(safe-area-inset-top, 0px)) 16px 12px;
+    border-bottom: 1px solid var(--line);
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+
+  .topo { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+  h1 { margin: 0; font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em; }
+  .contagem { font-size: 0.95rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .contagem strong { color: var(--ink); font-size: 1.15rem; }
+
+  .barra { height: 8px; border-radius: 99px; background: var(--line); margin: 10px 0 12px; overflow: hidden; }
+  .barra > span { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; transition: width .25s ease; }
+
+  .acoes { display: flex; gap: 8px; flex-wrap: wrap; }
+  .acoes button {
+    font: inherit; font-size: 0.9rem; font-weight: 600;
+    padding: 8px 14px; border-radius: 99px;
+    border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+    cursor: pointer;
+  }
+  .acoes button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .acoes button[aria-pressed="true"] { color: #0e1a13; }
+  }
+
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px calc(40px + env(safe-area-inset-bottom, 0px)); }
+
+  section { margin-bottom: 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  section.completa { border-color: var(--accent); }
+  summary {
+    list-style: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 14px 16px; font-weight: 700; font-size: 1.05rem;
+    min-height: 52px;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary .qtd { font-size: 0.85rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums; }
+  section.completa summary .qtd { color: var(--accent); }
+  summary::after {
+    content: ""; width: 8px; height: 8px; flex: none;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+    transform: rotate(45deg); transition: transform .15s ease; margin-left: 4px;
+  }
+  details[open] > summary::after { transform: rotate(-135deg); }
+  summary:focus-visible, .item:focus-within { outline: 3px solid var(--accent); outline-offset: -3px; }
+
+  ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+  li { border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: 0; }
+  li.oculto { display: none; }
+
+  .item { display: flex; gap: 14px; align-items: flex-start; padding: 13px 16px; cursor: pointer; min-height: 56px; }
+  .item input {
+    appearance: none; -webkit-appearance: none;
+    flex: none; width: 28px; height: 28px; margin: 1px 0 0;
+    border: 2px solid var(--muted); border-radius: 8px; background: transparent;
+    display: grid; place-content: center; cursor: pointer;
+    transition: background .12s ease, border-color .12s ease;
+  }
+  .item input::after {
+    content: ""; width: 7px; height: 13px; margin-top: -2px;
+    border-right: 3px solid #fff; border-bottom: 3px solid #fff;
+    transform: rotate(45deg) scale(0); transition: transform .12s ease;
+  }
+  .item input:checked { background: var(--accent); border-color: var(--accent); }
+  .item input:checked::after { transform: rotate(45deg) scale(1); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .item input::after { border-color: #0e1a13; }
+  }
+  .item input:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+
+  .texto { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .nome { font-weight: 600; overflow-wrap: anywhere; }
+  .detalhe { font-size: 0.88rem; color: var(--muted); }
+  .obs { display: inline-block; font-size: 0.82rem; font-weight: 500; color: var(--note); background: var(--note-bg); padding: 3px 9px; border-radius: 8px; align-self: flex-start; }
+
+  .item:has(input:checked) .nome { text-decoration: line-through; color: var(--done); font-weight: 500; }
+  .item:has(input:checked) .detalhe, .item:has(input:checked) .obs { opacity: .55; }
+
+  .aviso { padding: 20px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  .aviso h2 { margin: 0 0 8px; font-size: 1.1rem; }
+  .aviso p { margin: 6px 0; color: var(--muted); }
+  .aviso code { background: var(--accent-soft); padding: 1px 6px; border-radius: 6px; font-size: 0.9em; }
+
+  .fim { text-align: center; padding: 18px; font-weight: 700; color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div class="topo">
+      <h1>Lista de compras</h1>
+      <div class="contagem" id="contagem" aria-live="polite"></div>
+    </div>
+    <div class="barra" role="progressbar" aria-label="Itens pegos" aria-valuemin="0" aria-valuemax="100" id="barra"><span id="barra-preench"></span></div>
+    <div class="acoes">
+      <button type="button" id="btn-ocultar" aria-pressed="false">Ocultar pegos</button>
+      <button type="button" id="btn-limpar">Desmarcar tudo</button>
+    </div>
+  </div>
+</header>
+
+<main id="app"><p class="detalhe">Carregando lista…</p></main>
+
+<script>
+(() => {
+  const ARQUIVO = "lista.json";
+  const CHAVE_MARCADOS = "lista-compras:marcados";
+  const CHAVE_OCULTAR = "lista-compras:ocultar-pegos";
+
+  const app = document.getElementById("app");
+  const contagem = document.getElementById("contagem");
+  const barra = document.getElementById("barra");
+  const barraPreench = document.getElementById("barra-preench");
+  const btnOcultar = document.getElementById("btn-ocultar");
+  const btnLimpar = document.getElementById("btn-limpar");
+
+  // ---- localStorage (com proteção para navegadores que bloqueiam) ----
+  const guardar = {
+    ler(chave, padrao) {
+      try {
+        const v = localStorage.getItem(chave);
+        return v === null ? padrao : JSON.parse(v);
+      } catch (e) { return padrao; }
+    },
+    gravar(chave, valor) {
+      try { localStorage.setItem(chave, JSON.stringify(valor)); } catch (e) { /* sem armazenamento */ }
+    }
+  };
+
+  const marcados = new Set(guardar.ler(CHAVE_MARCADOS, []));
+  let ocultarPegos = guardar.ler(CHAVE_OCULTAR, false) === true;
+
+  const salvarMarcados = () => guardar.gravar(CHAVE_MARCADOS, [...marcados]);
+
+  // ---- utilidades ----
+  const idDoItem = (categoria, nome) => `${categoria}|${nome}`;
+  const el = (tag, attrs = {}, ...filhos) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (k === "class") n.className = v;
+      else if (k === "text") n.textContent = v;
+      else n.setAttribute(k, v);
+    }
+    filhos.forEach(f => n.append(f));
+    return n;
+  };
+  const quantidadeUtil = q => q && !/^n[aã]o informad/i.test(q.trim());
+
+  // ---- renderização ----
+  let secoes = []; // { elemento, ids, titulo }
+  let total = 0;
+
+  function montar(dados) {
+    app.replaceChildren();
+    secoes = [];
+    total = 0;
+
+    dados.forEach(cat => {
+      const ids = [];
+      const lista = el("ul");
+
+      (cat.itens || []).forEach(item => {
+        const nome = typeof item === "string" ? item : item.nome;
+        if (!nome) return;
+        const id = idDoItem(cat.categoria, nome);
+        ids.push(id);
+
+        const cb = el("input", { type: "checkbox" });
+        cb.checked = marcados.has(id);
+        cb.addEventListener("change", () => {
+          if (cb.checked) marcados.add(id); else marcados.delete(id);
+          salvarMarcados();
+          atualizar();
+        });
+
+        const texto = el("span", { class: "texto" }, el("span", { class: "nome", text: nome }));
+        if (typeof item === "object" && quantidadeUtil(item.quantidade)) {
+          texto.append(el("span", { class: "detalhe", text: item.quantidade }));
+        }
+        if (typeof item === "object" && item.observacao) {
+          texto.append(el("span", { class: "obs", text: item.observacao }));
+        }
+
+        const li = el("li", { "data-id": id }, el("label", { class: "item" }, cb, texto));
+        lista.append(li);
+      });
+
+      total += ids.length;
+      const qtd = el("span", { class: "qtd" });
+      const detalhes = el("details", { open: "" }, el("summary", {}, el("span", { text: cat.categoria }), qtd), lista);
+      const secao = el("section", {}, detalhes);
+      app.append(secao);
+      secoes.push({ elemento: secao, ids, qtd, lista });
+    });
+
+    app.append(el("p", { class: "fim", id: "fim", hidden: "" , text: "Compras concluídas! 🎉" }));
+    atualizar();
+  }
+
+  function atualizar() {
+    let pegos = 0;
+    secoes.forEach(s => {
+      const feitos = s.ids.filter(id => marcados.has(id)).length;
+      pegos += feitos;
+      s.qtd.textContent = `${feitos}/${s.ids.length}`;
+      s.elemento.classList.toggle("completa", s.ids.length > 0 && feitos === s.ids.length);
+      s.lista.querySelectorAll("li").forEach(li => {
+        li.classList.toggle("oculto", ocultarPegos && marcados.has(li.dataset.id));
+      });
+      s.elemento.hidden = ocultarPegos && feitos === s.ids.length && s.ids.length > 0;
+    });
+
+    const pct = total ? Math.round((pegos / total) * 100) : 0;
+    contagem.innerHTML = `<strong>${pegos}</strong> de ${total} pegos`;
+    barraPreench.style.width = pct + "%";
+    barra.setAttribute("aria-valuenow", pct);
+    const fim = document.getElementById("fim");
+    if (fim) fim.hidden = !(total > 0 && pegos === total);
+  }
+
+  // ---- botões ----
+  btnOcultar.setAttribute("aria-pressed", String(ocultarPegos));
+  btnOcultar.addEventListener("click", () => {
+    ocultarPegos = !ocultarPegos;
+    btnOcultar.setAttribute("aria-pressed", String(ocultarPegos));
+    guardar.gravar(CHAVE_OCULTAR, ocultarPegos);
+    atualizar();
+  });
+
+  btnLimpar.addEventListener("click", () => {
+    if (!marcados.size) return;
+    if (!confirm("Desmarcar todos os itens?")) return;
+    marcados.clear();
+    salvarMarcados();
+    app.querySelectorAll("input[type=checkbox]").forEach(cb => (cb.checked = false));
+    atualizar();
+  });
+
+  // ---- carregar o JSON ----
+  function mostrarErro(msg) {
+    app.replaceChildren(
+      el("div", { class: "aviso" },
+        el("h2", { text: "Não foi possível carregar a lista" }),
+        el("p", { text: msg }),
+        el("p", {}, "Confira se o arquivo ", el("code", { text: ARQUIVO }), " está na mesma pasta do ", el("code", { text: "index.html" }), ".")
+      )
+    );
+  }
+
+  fetch(ARQUIVO, { cache: "no-cache" })
+    .then(r => { if (!r.ok) throw new Error(`Erro ${r.status} ao ler ${ARQUIVO}.`); return r.json(); })
+    .then(dados => {
+      if (!Array.isArray(dados)) throw new Error("O JSON precisa ser uma lista de categorias.");
+      montar(dados);
+    })
+    .catch(e => {
+      const local = location.protocol === "file:";
+      mostrarErro(local
+        ? "Abrindo o arquivo direto do computador, o navegador bloqueia a leitura do JSON. Rode um servidor local (por exemplo: python3 -m http.server) ou teste direto no GitHub Pages."
+        : e.message);
+    });
+})();
+</script>
+</body>
+</html>
