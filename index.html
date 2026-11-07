@@ -51,6 +51,9 @@
       * {
         box-sizing: border-box;
       }
+      [hidden] {
+        display: none !important;
+      }
       html {
         scroll-padding-top: 130px;
       }
@@ -126,6 +129,12 @@
         display: flex;
         gap: 8px;
         flex-wrap: wrap;
+      }
+      .status-sync {
+        align-self: center;
+        margin: 0 0 0 auto;
+        color: var(--muted);
+        font-size: 0.9rem;
       }
       .acoes button {
         font: inherit;
@@ -318,8 +327,23 @@
         padding: 16px 16px 0;
       }
       #form-novo {
-        display: flex;
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(110px, 1fr) minmax(
+            88px,
+            0.75fr
+          ) auto;
         gap: 8px;
+        align-items: stretch;
+      }
+      #form-novo select {
+        width: 100%;
+        min-width: 0;
+        font: inherit;
+        padding: 12px 10px;
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink);
       }
       #form-auth {
         display: grid;
@@ -346,7 +370,6 @@
         margin-top: 4px;
       }
       #form-novo input {
-        flex: 1;
         min-width: 0;
         font: inherit;
         padding: 12px 14px;
@@ -355,10 +378,29 @@
         background: var(--surface);
         color: var(--ink);
       }
+      #form-novo #novo-nome {
+        grid-column: 1 / -1;
+      }
+      #form-novo #novo-quantidade {
+        grid-column: 2;
+      }
+      #form-novo #novo-unidade {
+        grid-column: 3;
+      }
+      #form-novo #novo-categoria {
+        grid-column: 1;
+      }
+      #form-novo button {
+        grid-column: 4;
+      }
       #form-novo input::placeholder {
         color: var(--muted);
       }
       #form-novo input:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 1px;
+      }
+      #form-novo select:focus-visible {
         outline: 3px solid var(--accent);
         outline-offset: 1px;
       }
@@ -375,6 +417,26 @@
       #form-novo button:focus-visible {
         outline: 3px solid var(--accent);
         outline-offset: 2px;
+      }
+      @media (max-width: 480px) {
+        #form-novo {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+        #form-novo #novo-nome {
+          grid-column: 1 / -1;
+        }
+        #form-novo #novo-categoria {
+          grid-column: 1;
+        }
+        #form-novo #novo-quantidade {
+          grid-column: 2;
+        }
+        #form-novo #novo-unidade {
+          grid-column: 1;
+        }
+        #form-novo button {
+          grid-column: 2;
+        }
       }
       @media (prefers-color-scheme: dark) {
         :root:not([data-theme="light"]) #form-novo button {
@@ -473,6 +535,8 @@
             Ocultar pegos
           </button>
           <button type="button" id="btn-limpar">Desmarcar tudo</button>
+          <p id="status-supabase" class="status-sync" role="status"></p>
+          <button type="button" id="btn-sair" hidden>Sair</button>
         </div>
       </div>
     </header>
@@ -493,10 +557,8 @@
           <div class="acoes">
             <button type="submit" id="btn-entrar">Entrar</button>
             <button type="button" id="btn-criar-conta">Criar conta</button>
-            <button type="button" id="btn-sair" hidden>Sair</button>
           </div>
         </form>
-        <p id="status-supabase" role="status"></p>
       </div>
       <form id="form-novo" autocomplete="off">
         <label for="novo-nome" class="sr">Novo item</label>
@@ -507,6 +569,35 @@
           maxlength="80"
           enterkeyhint="done"
         />
+        <label for="novo-categoria" class="sr">Categoria do novo item</label>
+        <select id="novo-categoria" required></select>
+        <label for="novo-quantidade" class="sr">Quantidade</label>
+        <input
+          id="novo-quantidade"
+          type="number"
+          inputmode="decimal"
+          min="0"
+          step="any"
+          placeholder="Qtd."
+          enterkeyhint="done"
+        />
+        <label for="novo-unidade" class="sr">Unidade</label>
+        <select id="novo-unidade">
+          <option value="Un" selected>Un</option>
+          <option value="kg">kg</option>
+          <option value="g">g</option>
+          <option value="mg">mg</option>
+          <option value="L">L</option>
+          <option value="mL">mL</option>
+          <option value="pacote">pacote</option>
+          <option value="caixa">caixa</option>
+          <option value="bandeja">bandeja</option>
+          <option value="frasco">frasco</option>
+          <option value="lata">lata</option>
+          <option value="pote">pote</option>
+          <option value="sachê">sachê</option>
+          <option value="rolo">rolo</option>
+        </select>
         <button type="submit">Adicionar</button>
       </form>
     </div>
@@ -516,7 +607,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
       (() => {
-        const ARQUIVO = "lista.json";
         const SUPABASE_URL = "https://gelnafoakvcimlvmpuqm.supabase.co";
         const SUPABASE_PUBLISHABLE_KEY =
           "sb_publishable__iC2OHswRekbVQFKY7HCpQ_izodjTd_";
@@ -558,7 +648,7 @@
           if (!supabaseClient || !usuario || carregandoRemoto) return;
           clearTimeout(temporizadorSync);
           temporizadorSync = setTimeout(async () => {
-            definirStatus("Salvando na nuvem…");
+            definirStatus("Sincronizando…");
             const { error } = await supabaseClient
               .from("lista_compras_estado")
               .upsert(
@@ -570,14 +660,18 @@
                 },
                 { onConflict: "user_id" },
               );
-            definirStatus(
-              error ? `Falha ao salvar: ${error.message}` : "Sincronizado",
-            );
+            if (error) {
+              definirStatus("Falha ao sincronizar. Verifique a conexão.");
+              console.error("Falha ao sincronizar a lista:", error);
+            } else {
+              definirStatus("Sincronizado");
+            }
           }, 300);
         }
 
         function mostrarAreaAutenticada(autenticado) {
           app.hidden = Boolean(supabaseClient && !autenticado);
+          painelConta.hidden = Boolean(supabaseClient && autenticado);
           document.getElementById("form-novo").hidden = Boolean(
             supabaseClient && !autenticado,
           );
@@ -598,7 +692,25 @@
           }
 
           carregandoRemoto = true;
-          definirStatus("Carregando sua lista…");
+          definirStatus("Carregando lista…");
+          const { data: catalogo, error: erroCatalogo } = await supabaseClient
+            .from("lista_compras_catalogo")
+            .select("produtos")
+            .eq("id", true)
+            .single();
+
+          if (erroCatalogo || !Array.isArray(catalogo?.produtos)) {
+            carregandoRemoto = false;
+            mostrarErro(
+              erroCatalogo
+                ? `Falha ao carregar o catálogo do Supabase: ${erroCatalogo.message}`
+                : "O catálogo do Supabase está vazio ou em formato inválido.",
+            );
+            return;
+          }
+
+          montar(catalogo.produtos);
+
           const { data, error } = await supabaseClient
             .from("lista_compras_estado")
             .select("marcados, extras")
@@ -606,8 +718,8 @@
             .maybeSingle();
 
           if (error) {
-            definirStatus(`Falha ao carregar: ${error.message}`);
             carregandoRemoto = false;
+            console.error("Falha ao carregar estado da lista:", error);
             return;
           }
 
@@ -617,27 +729,33 @@
               marcados.add(id),
             );
             extras = Array.isArray(data.extras)
-              ? data.extras.filter(
-                  (item) =>
-                    item &&
-                    typeof item.id === "string" &&
-                    typeof item.nome === "string",
-                )
+              ? data.extras
+                  .filter(
+                    (item) =>
+                      item &&
+                      typeof item.id === "string" &&
+                      typeof item.nome === "string",
+                  )
+                  .map((item) => ({
+                    ...item,
+                    categoria: categorias.includes(item.categoria)
+                      ? item.categoria
+                      : categoriaPadrao(),
+                    quantidade:
+                      typeof item.quantidade === "string"
+                        ? item.quantidade
+                        : "",
+                  }))
               : [];
-            salvarMarcados();
-            salvarExtras();
-            montarExtras();
-            app.querySelectorAll("li[data-id]").forEach((li) => {
-              const checkbox = li.querySelector('input[type="checkbox"]');
-              if (checkbox) checkbox.checked = marcados.has(li.dataset.id);
-            });
-            atualizar();
           }
+          montar(catalogo.produtos);
+          guardar.gravar(CHAVE_MARCADOS, [...marcados]);
+          guardar.gravar(CHAVE_EXTRAS, extras);
           carregandoRemoto = false;
           if (data) {
             definirStatus("Sincronizado");
           } else {
-            definirStatus("Preparando sincronização…");
+            definirStatus("Sincronizando…");
             agendarSincronizacao();
           }
         }
@@ -651,7 +769,10 @@
           formAuth.hidden = true;
           btnSair.hidden = true;
           definirStatus(
-            "Modo local. Configure a URL e a chave publicável do Supabase para ativar a sincronização.",
+            "Configure a URL e a chave publicável do Supabase para carregar a lista.",
+          );
+          mostrarErro(
+            "A lista agora é carregada do Supabase. Configure a conexão para continuar.",
           );
         }
 
@@ -734,7 +855,42 @@
 
         // ---- renderização ----
         const CHAVE_EXTRAS = "lista-compras:extras";
-        const NOME_EXTRAS = "Adicionados por mim";
+        const CATEGORIA_PADRAO = "Outros";
+        const UNIDADE_PADRAO = "Un";
+        const UNIDADES = new Set([
+          UNIDADE_PADRAO,
+          "kg",
+          "g",
+          "mg",
+          "L",
+          "mL",
+          "pacote",
+          "caixa",
+          "bandeja",
+          "frasco",
+          "lata",
+          "pote",
+          "sachê",
+          "rolo",
+        ]);
+        const UNIDADES_PLURAIS = {
+          pacote: "pacotes",
+          caixa: "caixas",
+          bandeja: "bandejas",
+          frasco: "frascos",
+          lata: "latas",
+          pote: "potes",
+          sachê: "sachês",
+          rolo: "rolos",
+        };
+        let categorias = [];
+
+        const categoriaPadrao = () =>
+          categorias.includes(CATEGORIA_PADRAO)
+            ? CATEGORIA_PADRAO
+            : categorias.includes("Outros alimentos")
+              ? "Outros alimentos"
+              : categorias[0] || CATEGORIA_PADRAO;
 
         const lerExtras = () => {
           const v = guardar.ler(CHAVE_EXTRAS, []);
@@ -752,10 +908,16 @@
         };
 
         let secoes = []; // { elemento, ids, qtd, lista }
-        let secaoExtras = null;
         let total = 0;
 
-        function criarItem(id, nome, quantidade, observacao, aoRemover) {
+        function criarItem(
+          id,
+          nome,
+          quantidade,
+          observacao,
+          aoRemover,
+          extra = false,
+        ) {
           const cb = el("input", { type: "checkbox" });
           cb.checked = marcados.has(id);
           cb.addEventListener("change", () => {
@@ -780,6 +942,7 @@
             { "data-id": id },
             el("label", { class: "item" }, cb, texto),
           );
+          if (extra) li.dataset.extra = "true";
           if (aoRemover) {
             const btn = el("button", {
               type: "button",
@@ -804,8 +967,10 @@
           );
           return {
             elemento: el("section", {}, detalhes),
+            titulo,
             detalhes,
             ids,
+            idsBase: [...ids],
             qtd,
             lista,
           };
@@ -814,7 +979,30 @@
         function montar(dados) {
           app.replaceChildren();
           secoes = [];
-          secaoExtras = null;
+          categorias = dados
+            .map((cat) => cat.categoria)
+            .filter(
+              (categoria, indice, lista) =>
+                typeof categoria === "string" &&
+                lista.indexOf(categoria) === indice,
+            );
+          campoCategoriaNovo.replaceChildren(
+            ...categorias.map((categoria) =>
+              el("option", {
+                value: categoria,
+                text: categoria === "Outros alimentos" ? "Outros" : categoria,
+              }),
+            ),
+          );
+          campoCategoriaNovo.value = categoriaPadrao();
+          extras = extras.map((item) => ({
+            ...item,
+            categoria: categorias.includes(item.categoria)
+              ? item.categoria
+              : categoriaPadrao(),
+            quantidade:
+              typeof item.quantidade === "string" ? item.quantidade : "",
+          }));
 
           dados.forEach((cat) => {
             const ids = [];
@@ -830,6 +1018,7 @@
                   obj.nome,
                   quantidadeUtil(obj.quantidade) ? obj.quantidade : "",
                   obj.observacao || "",
+                  () => removerItemCatalogo(cat.categoria, obj.nome, id),
                 ),
               );
             });
@@ -851,56 +1040,126 @@
         }
 
         function montarExtras() {
-          if (!extras.length) {
-            if (secaoExtras) {
-              secaoExtras.elemento.remove();
-              secoes = secoes.filter((s) => s !== secaoExtras);
-              secaoExtras = null;
-            }
-            return;
-          }
-          if (!secaoExtras) {
-            secaoExtras = criarSecao(NOME_EXTRAS, [], el("ul"));
-            secoes.push(secaoExtras);
-            app.insertBefore(
-              secaoExtras.elemento,
-              document.getElementById("fim"),
-            );
-          }
-          secaoExtras.ids = extras.map((x) => x.id);
-          secaoExtras.lista.replaceChildren(
-            ...extras.map((x) =>
-              criarItem(x.id, x.nome, "", "", () => removerExtra(x.id)),
-            ),
-          );
+          secoes.forEach((secao) => {
+            secao.lista
+              .querySelectorAll('li[data-extra="true"]')
+              .forEach((item) => item.remove());
+            secao.ids = [...secao.idsBase];
+
+            extras
+              .filter((item) => item.categoria === secao.titulo)
+              .forEach((item) => {
+                secao.ids.push(item.id);
+                secao.lista.append(
+                  criarItem(
+                    item.id,
+                    item.nome,
+                    quantidadeUtil(item.quantidade) ? item.quantidade : "",
+                    "",
+                    () => removerExtra(item.id),
+                    true,
+                  ),
+                );
+              });
+          });
         }
 
-        function adicionarExtra(nome) {
+        function adicionarExtra(nome, categoria, quantidade, unidade) {
           const limpo = nome.trim().replace(/\s+/g, " ");
           if (!limpo) return;
+          const quantidadeNumerica = quantidade.trim();
+          const numero = Number(quantidadeNumerica);
+          const unidadeEscolhida = UNIDADES.has(unidade)
+            ? unidade
+            : UNIDADE_PADRAO;
+          const unidadeFinal =
+            numero === 1
+              ? unidadeEscolhida
+              : UNIDADES_PLURAIS[unidadeEscolhida] || unidadeEscolhida;
+          const quantidadeLimpa = quantidadeNumerica
+            ? `${new Intl.NumberFormat("pt-BR", {
+                maximumFractionDigits: 6,
+              }).format(numero)} ${unidadeFinal}`
+            : "";
+          const categoriaEscolhida = categorias.includes(categoria)
+            ? categoria
+            : categoriaPadrao();
           const repetido = extras.some(
-            (x) => x.nome.toLowerCase() === limpo.toLowerCase(),
+            (x) =>
+              x.categoria === categoriaEscolhida &&
+              x.nome.toLowerCase() === limpo.toLowerCase(),
           );
           if (!repetido) {
             const id =
               "extra|" +
               Date.now().toString(36) +
               Math.random().toString(36).slice(2, 6);
-            extras.push({ id, nome: limpo });
+            extras.push({
+              id,
+              nome: limpo,
+              categoria: categoriaEscolhida,
+              quantidade: quantidadeLimpa,
+            });
             salvarExtras();
             montarExtras();
-            if (secaoExtras) secaoExtras.detalhes.open = true;
+            secoes.find(
+              (secao) => secao.titulo === categoriaEscolhida,
+            ).detalhes.open = true;
             atualizar();
           }
         }
 
         function removerExtra(id) {
+          const extra = extras.find((item) => item.id === id);
+          if (!extra || !confirm(`Excluir "${extra.nome}" da sua lista?`)) {
+            return;
+          }
           extras = extras.filter((x) => x.id !== id);
           marcados.delete(id);
           salvarExtras();
           salvarMarcados();
           montarExtras();
           atualizar();
+        }
+
+        async function removerItemCatalogo(categoria, nome, id) {
+          if (
+            !confirm(
+              `Excluir "${nome}" do catálogo compartilhado para todos os usuários?`,
+            )
+          ) {
+            return;
+          }
+
+          definirStatus("Sincronizando…");
+          const { data, error } = await supabaseClient.rpc(
+            "remover_item_catalogo",
+            { p_categoria: categoria, p_nome: nome },
+          );
+
+          if (error || !data) {
+            definirStatus(
+              error
+                ? "Falha ao excluir o item compartilhado."
+                : "O item já não está no catálogo. Atualize a página.",
+            );
+            if (error) console.error("Falha ao excluir item:", error);
+            return;
+          }
+
+          marcados.delete(id);
+          guardar.gravar(CHAVE_MARCADOS, [...marcados]);
+          const secao = secoes.find((item) => item.ids.includes(id));
+          if (secao) {
+            secao.ids = secao.ids.filter((itemId) => itemId !== id);
+            secao.idsBase = secao.idsBase.filter((itemId) => itemId !== id);
+            const linha = [...secao.lista.querySelectorAll("li[data-id]")].find(
+              (item) => item.dataset.id === id,
+            );
+            if (linha) linha.remove();
+            atualizar();
+          }
+          definirStatus("Sincronizado");
         }
 
         function atualizar() {
@@ -935,10 +1194,20 @@
         // ---- formulário de novo item ----
         const formNovo = document.getElementById("form-novo");
         const campoNovo = document.getElementById("novo-nome");
+        const campoQuantidadeNovo = document.getElementById("novo-quantidade");
+        const campoCategoriaNovo = document.getElementById("novo-categoria");
+        const campoUnidadeNovo = document.getElementById("novo-unidade");
         formNovo.addEventListener("submit", (e) => {
           e.preventDefault();
-          adicionarExtra(campoNovo.value);
+          adicionarExtra(
+            campoNovo.value,
+            campoCategoriaNovo.value,
+            campoQuantidadeNovo.value,
+            campoUnidadeNovo.value,
+          );
           campoNovo.value = "";
+          campoQuantidadeNovo.value = "";
+          campoUnidadeNovo.value = UNIDADE_PADRAO;
           campoNovo.focus();
         });
 
@@ -962,7 +1231,7 @@
           atualizar();
         });
 
-        // ---- carregar o JSON ----
+        // ---- mensagens de erro ----
         function mostrarErro(msg) {
           app.replaceChildren(
             el(
@@ -970,42 +1239,9 @@
               { class: "aviso" },
               el("h2", { text: "Não foi possível carregar a lista" }),
               el("p", { text: msg }),
-              el(
-                "p",
-                {},
-                "Confira se o arquivo ",
-                el("code", { text: ARQUIVO }),
-                " está na mesma pasta do ",
-                el("code", { text: "index.html" }),
-                ".",
-              ),
             ),
           );
         }
-
-        fetch(ARQUIVO, { cache: "no-cache" })
-          .then((r) => {
-            if (!r.ok) throw new Error(`Erro ${r.status} ao ler ${ARQUIVO}.`);
-            return r.json();
-          })
-          .then((dados) => {
-            if (!Array.isArray(dados))
-              throw new Error("O JSON precisa ser uma lista de categorias.");
-            montar(dados);
-            if (supabaseClient) {
-              definirStatus(
-                "Entre para sincronizar sua lista entre dispositivos.",
-              );
-            }
-          })
-          .catch((e) => {
-            const local = location.protocol === "file:";
-            mostrarErro(
-              local
-                ? "Abrindo o arquivo direto do computador, o navegador bloqueia a leitura do JSON. Rode um servidor local (por exemplo: python3 -m http.server) ou teste direto no GitHub Pages."
-                : e.message,
-            );
-          });
       })();
     </script>
   </body>
