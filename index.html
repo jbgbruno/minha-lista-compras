@@ -317,6 +317,17 @@
         font-weight: 600;
         font-variant-numeric: tabular-nums;
       }
+      .valores-item {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 10px;
+        font-variant-numeric: tabular-nums;
+      }
+      .total-item {
+        font-size: 0.88rem;
+        color: var(--muted);
+        font-weight: 600;
+      }
       .obs {
         display: inline-block;
         font-size: 0.82rem;
@@ -594,6 +605,15 @@
             >
               Total aproximado: R$ 0,00
             </div>
+            <div
+              class="total-aproximado"
+              id="total-pegos"
+              aria-live="polite"
+              aria-label="Total aproximado dos itens pegos"
+              title="Total aproximado dos itens pegos"
+            >
+              Total pegos: R$ 0,00
+            </div>
           </div>
         </div>
         <div
@@ -741,6 +761,7 @@
         const btnOcultar = document.getElementById("btn-ocultar");
         const btnLimpar = document.getElementById("btn-limpar");
         const totalAproximado = document.getElementById("total-aproximado");
+        const totalPegos = document.getElementById("total-pegos");
         const painelConta = document.getElementById("painel-conta");
         const formAuth = document.getElementById("form-auth");
         const campoEmail = document.getElementById("auth-email");
@@ -1068,6 +1089,7 @@
           aoRemover,
           extra = false,
           precoAproximado = null,
+          quantidadeNumerica = null,
         ) {
           const cb = el("input", { type: "checkbox" });
           cb.checked = marcados.has(id);
@@ -1086,13 +1108,24 @@
           if (quantidade)
             texto.append(el("span", { class: "detalhe", text: quantidade }));
           const preco = normalizarPreco(precoAproximado);
-          if (preco !== null)
+          if (preco !== null) {
+            const totalDoItem =
+              preco * (quantidadeNumerica === null ? 1 : quantidadeNumerica);
             texto.append(
-              el("span", {
-                class: "preco-aproximado",
-                text: `Preço aprox.: ${formatarPreco(preco)}`,
-              }),
+              el(
+                "span",
+                { class: "valores-item" },
+                el("span", {
+                  class: "preco-aproximado",
+                  text: `Preço aprox.: ${formatarPreco(preco)}`,
+                }),
+                el("span", {
+                  class: "total-item",
+                  text: `Total: ${formatarPreco(totalDoItem)}`,
+                }),
+              ),
             );
+          }
           if (observacao)
             texto.append(el("span", { class: "obs", text: observacao }));
 
@@ -1211,6 +1244,7 @@
                   () => removerItemCatalogo(cat.categoria, obj.nome, id),
                   false,
                   preco,
+                  quantidade.quantidade,
                 ),
               );
             });
@@ -1278,6 +1312,7 @@
                     () => removerExtra(item.id),
                     true,
                     preco,
+                    quantidade.quantidade,
                   ),
                 );
               });
@@ -1398,7 +1433,22 @@
               }, 0),
             0,
           );
+          const somaPegos = secoes.reduce(
+            (soma, secao) =>
+              soma +
+              secao.ids.reduce((subtotal, id) => {
+                if (!marcados.has(id)) return subtotal;
+                const item = precos.get(id);
+                if (!item) return subtotal;
+                return (
+                  subtotal +
+                  item.preco * (item.quantidade === null ? 1 : item.quantidade)
+                );
+              }, 0),
+            0,
+          );
           totalAproximado.textContent = `Total aproximado: ${formatarPreco(somaPrecos)}`;
+          totalPegos.textContent = `Total pegos: ${formatarPreco(somaPegos)}`;
           secoes.forEach((s) => {
             const feitos = s.ids.filter((id) => marcados.has(id)).length;
             pegos += feitos;
