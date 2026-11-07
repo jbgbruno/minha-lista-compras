@@ -321,6 +321,30 @@
         display: flex;
         gap: 8px;
       }
+      #form-auth {
+        display: grid;
+        gap: 8px;
+      }
+      #form-auth label {
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+      #form-auth input {
+        min-width: 0;
+        font: inherit;
+        padding: 10px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--surface);
+        color: var(--ink);
+      }
+      #form-auth input:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 1px;
+      }
+      #form-auth .acoes {
+        margin-top: 4px;
+      }
       #form-novo input {
         flex: 1;
         min-width: 0;
@@ -454,6 +478,26 @@
     </header>
 
     <div class="novo-wrap">
+      <div id="painel-conta" class="aviso" aria-live="polite">
+        <form id="form-auth" autocomplete="on">
+          <label for="auth-email">E-mail</label>
+          <input id="auth-email" type="email" autocomplete="email" required />
+          <label for="auth-senha">Senha</label>
+          <input
+            id="auth-senha"
+            type="password"
+            autocomplete="current-password"
+            minlength="6"
+            required
+          />
+          <div class="acoes">
+            <button type="submit" id="btn-entrar">Entrar</button>
+            <button type="button" id="btn-criar-conta">Criar conta</button>
+            <button type="button" id="btn-sair" hidden>Sair</button>
+          </div>
+        </form>
+        <p id="status-supabase" role="status"></p>
+      </div>
       <form id="form-novo" autocomplete="off">
         <label for="novo-nome" class="sr">Novo item</label>
         <input
@@ -469,9 +513,23 @@
 
     <main id="app"><p class="detalhe">Carregando lista…</p></main>
 
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
       (() => {
         const ARQUIVO = "lista.json";
+        const SUPABASE_URL = "https://gelnafoakvcimlvmpuqm.supabase.co";
+        const SUPABASE_PUBLISHABLE_KEY =
+          "sb_publishable__iC2OHswRekbVQFKY7HCpQ_izodjTd_";
+        const supabaseClient =
+          window.supabase &&
+          SUPABASE_URL.startsWith("https://") &&
+          !SUPABASE_URL.includes("SEU-PROJETO") &&
+          SUPABASE_PUBLISHABLE_KEY !== "SUA_CHAVE_PUBLICAVEL"
+            ? window.supabase.createClient(
+                SUPABASE_URL,
+                SUPABASE_PUBLISHABLE_KEY,
+              )
+            : null;
         const CHAVE_MARCADOS = "lista-compras:marcados";
         const CHAVE_OCULTAR = "lista-compras:ocultar-pegos";
 
@@ -481,6 +539,157 @@
         const barraPreench = document.getElementById("barra-preench");
         const btnOcultar = document.getElementById("btn-ocultar");
         const btnLimpar = document.getElementById("btn-limpar");
+        const painelConta = document.getElementById("painel-conta");
+        const formAuth = document.getElementById("form-auth");
+        const campoEmail = document.getElementById("auth-email");
+        const campoSenha = document.getElementById("auth-senha");
+        const btnCriarConta = document.getElementById("btn-criar-conta");
+        const btnSair = document.getElementById("btn-sair");
+        const statusSupabase = document.getElementById("status-supabase");
+        let usuario = null;
+        let carregandoRemoto = false;
+        let temporizadorSync = null;
+
+        function definirStatus(mensagem) {
+          statusSupabase.textContent = mensagem;
+        }
+
+        function agendarSincronizacao() {
+          if (!supabaseClient || !usuario || carregandoRemoto) return;
+          clearTimeout(temporizadorSync);
+          temporizadorSync = setTimeout(async () => {
+            definirStatus("Salvando na nuvem…");
+            const { error } = await supabaseClient
+              .from("lista_compras_estado")
+              .upsert(
+                {
+                  user_id: usuario.id,
+                  marcados: [...marcados],
+                  extras,
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "user_id" },
+              );
+            definirStatus(
+              error ? `Falha ao salvar: ${error.message}` : "Sincronizado",
+            );
+          }, 300);
+        }
+
+        function mostrarAreaAutenticada(autenticado) {
+          app.hidden = Boolean(supabaseClient && !autenticado);
+          document.getElementById("form-novo").hidden = Boolean(
+            supabaseClient && !autenticado,
+          );
+          btnOcultar.disabled = Boolean(supabaseClient && !autenticado);
+          btnLimpar.disabled = Boolean(supabaseClient && !autenticado);
+          formAuth.hidden = Boolean(supabaseClient && autenticado);
+          btnSair.hidden = !supabaseClient || !autenticado;
+        }
+
+        async function carregarEstadoRemoto(sessao) {
+          usuario = sessao?.user ?? null;
+          mostrarAreaAutenticada(Boolean(usuario));
+          if (!usuario) {
+            definirStatus(
+              "Entre para sincronizar sua lista entre dispositivos.",
+            );
+            return;
+          }
+
+          carregandoRemoto = true;
+          definirStatus("Carregando sua lista…");
+          const { data, error } = await supabaseClient
+            .from("lista_compras_estado")
+            .select("marcados, extras")
+            .eq("user_id", usuario.id)
+            .maybeSingle();
+
+          if (error) {
+            definirStatus(`Falha ao carregar: ${error.message}`);
+            carregandoRemoto = false;
+            return;
+          }
+
+          if (data) {
+            marcados.clear();
+            (Array.isArray(data.marcados) ? data.marcados : []).forEach((id) =>
+              marcados.add(id),
+            );
+            extras = Array.isArray(data.extras)
+              ? data.extras.filter(
+                  (item) =>
+                    item &&
+                    typeof item.id === "string" &&
+                    typeof item.nome === "string",
+                )
+              : [];
+            salvarMarcados();
+            salvarExtras();
+            montarExtras();
+            app.querySelectorAll("li[data-id]").forEach((li) => {
+              const checkbox = li.querySelector('input[type="checkbox"]');
+              if (checkbox) checkbox.checked = marcados.has(li.dataset.id);
+            });
+            atualizar();
+          }
+          carregandoRemoto = false;
+          if (data) {
+            definirStatus("Sincronizado");
+          } else {
+            definirStatus("Preparando sincronização…");
+            agendarSincronizacao();
+          }
+        }
+
+        if (supabaseClient) {
+          mostrarAreaAutenticada(false);
+          supabaseClient.auth.onAuthStateChange((_evento, sessao) => {
+            setTimeout(() => carregarEstadoRemoto(sessao), 0);
+          });
+        } else {
+          formAuth.hidden = true;
+          btnSair.hidden = true;
+          definirStatus(
+            "Modo local. Configure a URL e a chave publicável do Supabase para ativar a sincronização.",
+          );
+        }
+
+        formAuth.addEventListener("submit", async (evento) => {
+          evento.preventDefault();
+          if (!supabaseClient) return;
+          definirStatus("Entrando…");
+          const { error } = await supabaseClient.auth.signInWithPassword({
+            email: campoEmail.value.trim(),
+            password: campoSenha.value,
+          });
+          definirStatus(
+            error
+              ? `Não foi possível entrar: ${error.message}`
+              : "Login realizado.",
+          );
+        });
+
+        btnCriarConta.addEventListener("click", async () => {
+          if (!supabaseClient) return;
+          definirStatus("Criando conta…");
+          const { data, error } = await supabaseClient.auth.signUp({
+            email: campoEmail.value.trim(),
+            password: campoSenha.value,
+          });
+          definirStatus(
+            error
+              ? `Não foi possível criar a conta: ${error.message}`
+              : data.session
+                ? "Conta criada."
+                : "Conta criada. Confira seu e-mail para confirmar o cadastro.",
+          );
+        });
+
+        btnSair.addEventListener("click", async () => {
+          const { error } = await supabaseClient.auth.signOut();
+          if (error) definirStatus(`Não foi possível sair: ${error.message}`);
+        });
 
         // ---- localStorage (com proteção para navegadores que bloqueiam) ----
         const guardar = {
@@ -504,8 +713,10 @@
         const marcados = new Set(guardar.ler(CHAVE_MARCADOS, []));
         let ocultarPegos = guardar.ler(CHAVE_OCULTAR, false) === true;
 
-        const salvarMarcados = () =>
+        const salvarMarcados = () => {
           guardar.gravar(CHAVE_MARCADOS, [...marcados]);
+          agendarSincronizacao();
+        };
 
         // ---- utilidades ----
         const idDoItem = (categoria, nome) => `${categoria}|${nome}`;
@@ -535,7 +746,10 @@
             : [];
         };
         let extras = lerExtras();
-        const salvarExtras = () => guardar.gravar(CHAVE_EXTRAS, extras);
+        const salvarExtras = () => {
+          guardar.gravar(CHAVE_EXTRAS, extras);
+          agendarSincronizacao();
+        };
 
         let secoes = []; // { elemento, ids, qtd, lista }
         let secaoExtras = null;
@@ -778,6 +992,11 @@
             if (!Array.isArray(dados))
               throw new Error("O JSON precisa ser uma lista de categorias.");
             montar(dados);
+            if (supabaseClient) {
+              definirStatus(
+                "Entre para sincronizar sua lista entre dispositivos.",
+              );
+            }
           })
           .catch((e) => {
             const local = location.protocol === "file:";
