@@ -26,6 +26,7 @@ values (
     {"categoria":"Mercearia","itens":[{"nome":"Arroz","quantidade":"6 pacotes de 1 kg"},{"nome":"Açúcar","quantidade":"3 kg"},{"nome":"Cuscuz","quantidade":"6 pacotes"},{"nome":"Tapioca","quantidade":"6 pacotes"},{"nome":"Extrato de tomate","quantidade":"2 unidades"},{"nome":"Milho verde","quantidade":"1 lata"},{"nome":"Biscoito Cream Cracker","quantidade":"2 pacotes"},{"nome":"Biscoito","quantidade":"Não informada"},{"nome":"Massa para bolo","quantidade":"3 unidades"},{"nome":"Fermento biológico","quantidade":"1 unidade"},{"nome":"Massa de pastel","quantidade":"Não informada"},{"nome":"Pimenta-do-reino moída","quantidade":"Não informada"},{"nome":"Óleo","quantidade":"Não informada"},{"nome":"Ketchup","quantidade":"1 frasco grande"},{"nome":"Café","quantidade":"5 pacotes"}]},
     {"categoria":"Carnes e frios","itens":[{"nome":"Frango","quantidade":"4 bandejas"},{"nome":"Carne bovina","quantidade":"2 kg"},{"nome":"Carne moída","quantidade":"1 kg"},{"nome":"Carne para hambúrguer","quantidade":"8 unidades"},{"nome":"Mortadela","quantidade":"Não informada"}]},
     {"categoria":"Laticínios","itens":[{"nome":"Creme de leite","quantidade":"2 unidades"},{"nome":"Leite condensado","quantidade":"1 unidade"},{"nome":"Leite em pó","quantidade":"Não informada","observacao":"Sem lactose"},{"nome":"Queijo","quantidade":"Não informada","observacao":"Sem lactose"},{"nome":"Iogurte","quantidade":"Não informada","observacao":"Sem lactose"},{"nome":"Margarina","quantidade":"Não informada"}]},
+    {"categoria":"Isabelle","itens":[]},
     {"categoria":"Outros","itens":[{"nome":"Ovos","quantidade":"2 bandejas"},{"nome":"Pão de queijo","quantidade":"Não informada"},{"nome":"Gelatina de maracujá","quantidade":"2 unidades"},{"nome":"Macaxeira","quantidade":"Não informada"},{"nome":"Sachê de ração para gato","quantidade":"Não informada"},{"nome":"Açaí","quantidade":"1 pote"}]},
     {"categoria":"Verduras e legumes","itens":[{"nome":"Alface","quantidade":"Não informada"},{"nome":"Tomate","quantidade":"Não informada"},{"nome":"Cenoura","quantidade":"Não informada"},{"nome":"Beterraba","quantidade":"Não informada"},{"nome":"Pepino","quantidade":"Não informada"},{"nome":"Cebola roxa","quantidade":"Não informada"}]},
     {"categoria":"Frutas e polpas","itens":[{"nome":"Banana","quantidade":"Não informada"},{"nome":"Maçã","quantidade":"Não informada"},{"nome":"Laranja","quantidade":"Não informada"},{"nome":"Tangerina","quantidade":"Não informada"},{"nome":"Pêra","quantidade":"Não informada"},{"nome":"Polpa de maracujá","quantidade":"Não informada"},{"nome":"Polpa de cajá","quantidade":"Não informada"}]},
@@ -50,6 +51,17 @@ set produtos = (
 )
 where catalogo.id = true
   and catalogo.produtos @> '[{"categoria":"Outros alimentos"}]'::jsonb;
+
+update public.lista_compras_catalogo as catalogo
+set produtos = catalogo.produtos ||
+  '[{"categoria":"Isabelle","itens":[]}]'::jsonb,
+  updated_at = now()
+where catalogo.id = true
+  and not exists (
+    select 1
+    from jsonb_array_elements(catalogo.produtos) as categorias(categoria)
+    where categorias.categoria->>'categoria' = 'Isabelle'
+  );
 
 create table if not exists public.lista_compras_estado (
   user_id uuid primary key references auth.users (id) on delete cascade,
