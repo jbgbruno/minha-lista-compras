@@ -135,6 +135,157 @@ where exists (
     and coalesce(btrim(extras.extra->>'unidade'), '') = ''
 );
 
+do $migrar_extras_compartilhados$
+declare
+  estado record;
+  extra jsonb;
+  item jsonb;
+  categoria_dados jsonb;
+  produtos_catalogo jsonb;
+  itens_categoria jsonb;
+  categoria text;
+  nome text;
+  categoria_ordem bigint;
+  nome_catalogo text;
+  marcados_usuario text[];
+  itens_migrados integer := 0;
+begin
+  select produtos
+  into produtos_catalogo
+  from public.lista_compras_catalogo
+  where id = true
+  for update;
+
+  if not found or jsonb_typeof(produtos_catalogo) <> 'array' then
+    raise exception 'O catálogo não está disponível para migrar os itens pessoais.';
+  end if;
+
+  for estado in
+    select user_id, marcados, extras
+    from public.lista_compras_estado
+    where jsonb_typeof(extras) = 'array'
+      and jsonb_array_length(extras) > 0
+    order by user_id
+    for update
+  loop
+    marcados_usuario := estado.marcados;
+
+    for extra in
+      select valor
+      from jsonb_array_elements(estado.extras) as itens(valor)
+    loop
+      if jsonb_typeof(extra) <> 'object' then
+        raise exception 'Há um item pessoal inválido; a migração foi cancelada sem apagar dados.';
+      end if;
+
+      categoria := regexp_replace(
+        btrim(coalesce(extra->>'categoria', '')),
+        '[[:space:]]+',
+        ' ',
+        'g'
+      );
+      nome := regexp_replace(
+        btrim(coalesce(extra->>'nome', '')),
+        '[[:space:]]+',
+        ' ',
+        'g'
+      );
+      if categoria = '' or nome = '' then
+        raise exception 'Há um item pessoal sem categoria ou nome; a migração foi cancelada sem apagar dados.';
+      end if;
+
+      select public.normalizar_quantidades_itens(
+        jsonb_build_array(extra - 'id' - 'categoria')
+      )->0
+      into item;
+
+      select ordem, valor
+      into categoria_ordem, categoria_dados
+      from jsonb_array_elements(produtos_catalogo)
+        with ordinality as categorias(valor, ordem)
+      where lower(regexp_replace(
+        btrim(coalesce(valor->>'categoria', '')),
+        '[[:space:]]+',
+        ' ',
+        'g'
+      )) = lower(categoria)
+      limit 1;
+
+      if not found then
+        categoria_ordem := jsonb_array_length(produtos_catalogo) + 1;
+        categoria_dados := jsonb_build_object(
+          'categoria',
+          categoria,
+          'itens',
+          '[]'::jsonb
+        );
+        produtos_catalogo := produtos_catalogo || jsonb_build_array(categoria_dados);
+      end if;
+
+      categoria := categoria_dados->>'categoria';
+      itens_categoria := coalesce(categoria_dados->'itens', '[]'::jsonb);
+
+      select coalesce(
+        valor->>'nome',
+        case when jsonb_typeof(valor) = 'string' then valor #>> '{}' end
+      )
+      into nome_catalogo
+      from jsonb_array_elements(itens_categoria) as itens(valor)
+      where lower(regexp_replace(
+        btrim(coalesce(
+          valor->>'nome',
+          case when jsonb_typeof(valor) = 'string' then valor #>> '{}' end
+        )),
+        '[[:space:]]+',
+        ' ',
+        'g'
+      )) = lower(nome)
+      limit 1;
+
+      if found then
+        nome := nome_catalogo;
+      else
+        item := jsonb_set(item, '{nome}', to_jsonb(nome), true);
+        categoria_dados := jsonb_set(
+          categoria_dados,
+          '{itens}',
+          itens_categoria || jsonb_build_array(item),
+          true
+        );
+        produtos_catalogo := jsonb_set(
+          produtos_catalogo,
+          array[(categoria_ordem - 1)::text],
+          categoria_dados,
+          true
+        );
+        itens_migrados := itens_migrados + 1;
+      end if;
+
+      if nullif(extra->>'id', '') is not null then
+        marcados_usuario := array_replace(
+          marcados_usuario,
+          extra->>'id',
+          categoria || '|' || nome
+        );
+      end if;
+    end loop;
+
+    update public.lista_compras_estado
+    set marcados = marcados_usuario,
+        extras = '[]'::jsonb,
+        updated_at = now()
+    where user_id = estado.user_id;
+  end loop;
+
+  if itens_migrados > 0 then
+    update public.lista_compras_catalogo
+    set produtos = produtos_catalogo,
+        updated_at = now()
+    where id = true;
+  end if;
+end;
+$migrar_extras_compartilhados$;
+
 create or replace function public.remover_item_catalogo(
   p_categoria text,
   p_nome text

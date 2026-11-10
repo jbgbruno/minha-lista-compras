@@ -30,17 +30,17 @@ de build do GitHub Pages.
    `SUA_CHAVE_PUBLICAVEL` pela chave publishable/anon do projeto.
 5. Publique os arquivos no GitHub Pages e use a mesma conta em cada dispositivo.
 
-O catálogo base fica no Supabase e é compartilhado entre usuários autenticados,
-somente para leitura direta pelo aplicativo. O botão de remoção usa a função
+O catálogo fica no Supabase e é compartilhado entre usuários autenticados.
+Inclusões pelo formulário e pela importação CSV são gravadas no catálogo
+compartilhado. Ao reaplicar `supabase.sql`, extras pessoais antigos de todas as
+contas são migrados para o catálogo; após a migração, eles deixam de ser privados
+e ficam visíveis para todos. Itens repetidos na mesma categoria não são
+duplicados, e os itens marcados continuam marcados. O botão de remoção usa a função
 `remover_item_catalogo` para excluir um item do catálogo compartilhado, afetando
 todos os usuários. A função também limpa as marcações desse produto nas listas.
 Edições do catálogo usam `atualizar_item_catalogo` e também afetam todos os
 usuários, preservando as marcações quando nome ou categoria mudam. Marcações e
-extras pessoais antigos continuam sincronizados por usuário; novas inclusões
-pelo formulário usam `importar_itens_catalogo` e ficam visíveis para todos.
-Extras que já existiam antes dessa mudança não são convertidos automaticamente;
-para compartilhá-los, adicione-os novamente pelo formulário e remova o extra
-pessoal antigo da sua lista para evitar que apareça duplicado.
+seleções continuam sincronizadas por usuário.
 
 ## Testes E2E com Playwright
 
