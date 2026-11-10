@@ -36,7 +36,28 @@ somente para leitura direta pelo aplicativo. O botão de remoção usa a funçã
 todos os usuários. A função também limpa as marcações desse produto nas listas.
 Edições do catálogo usam `atualizar_item_catalogo` e também afetam todos os
 usuários, preservando as marcações quando nome ou categoria mudam. Marcações e
-itens adicionados pela página continuam sincronizados por usuário.
+extras pessoais antigos continuam sincronizados por usuário; novas inclusões
+pelo formulário usam `importar_itens_catalogo` e ficam visíveis para todos.
+Extras que já existiam antes dessa mudança não são convertidos automaticamente;
+para compartilhá-los, adicione-os novamente pelo formulário e remova o extra
+pessoal antigo da sua lista para evitar que apareça duplicado.
+
+## Testes E2E com Playwright
+
+Na raiz do projeto, crie um `.env` local com as chaves `usuario_1`, `senha_1`,
+`usuario_2` e `senha_2`. Não compartilhe esse arquivo nem remova-o do
+`.gitignore`. A suíte verifica acesso anônimo/autenticado, downloads do modelo e
+do catálogo, validação e resumo de importação CSV, além do compartilhamento de
+um produto entre as duas contas.
+
+Com GNU Make e Node.js instalados, execute `make test-e2e`. O alvo instala as
+dependências e o Chromium quando necessário e inicia um servidor local. Para
+abrir o navegador durante os testes, execute `make test-e2e-visual`. Também é
+possível executar manualmente: `npm install`, `npx playwright install chromium`
+e `npm run test:e2e`; para navegador visível, use `npm run test:e2e:headed`.
+
+Os testes que importam produtos usam nomes temporários e removem os registros
+criados pela própria interface ao final.
 O campo opcional `preco_aproximado` é editado no formulário de edição, aparece
 em cada item e é tratado como preço unitário: o total aproximado soma preço ×
 quantidade, considerando uma unidade quando a quantidade estiver vazia. Os
@@ -44,6 +65,29 @@ campos `quantidade` (numérico) e `unidade` (texto) são armazenados
 separadamente. Ao reaplicar o SQL, valores antigos como `2 pacotes` são
 migrados para esses campos. A edição oferece as mesmas opções de unidade da
 inclusão; o preço não é solicitado ao adicionar um item novo.
+
+## CSV de produtos
+
+No fim da página, use **Exportar CSV** para baixar os produtos do catálogo
+compartilhado ou **Baixar modelo** para obter um arquivo somente com os
+cabeçalhos. O CSV usa UTF-8 com BOM e ponto e vírgula como delimitador. As
+colunas são `categoria`, `nome`, `quantidade`, `unidade`, `preco_aproximado` e
+`observacao`.
+
+Para importar, preencha o modelo e selecione o arquivo CSV. Categoria e nome
+são obrigatórios; quantidade e preço devem ser números não negativos quando
+informados. Linhas inválidas aparecem no resumo com o número da linha. A
+importação acrescenta apenas produtos que ainda não existam na mesma categoria,
+comparando nome e categoria sem diferença entre maiúsculas/minúsculas ou espaços
+excedentes. Produtos já existentes não são alterados; categorias novas são
+criadas automaticamente. A primeira ocorrência válida no próprio arquivo é
+considerada e as seguintes são contadas como existentes.
+
+O catálogo é compartilhado: produtos importados ficam visíveis a todos os
+usuários. A gravação é feita pela função `importar_itens_catalogo`, disponível
+somente para usuários autenticados; a tabela continua sem permissão de escrita
+direta pelo cliente. Reaplique `supabase.sql` no SQL Editor para criar/atualizar
+a função antes de usar a importação.
 
 ## Limite de segurança
 

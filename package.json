@@ -1,0 +1,12 @@
+{
+    "name": "minha-lista-compras-tests",
+    "private": true,
+    "scripts": {
+        "test:sharing": "node tests/compartilhamento.playwright.cjs",
+        "test:e2e": "playwright test",
+        "test:e2e:headed": "playwright test --headed"
+    },
+    "devDependencies": {
+        "@playwright/test": "^1.65.0"
+    }
+}
